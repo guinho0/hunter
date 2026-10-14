@@ -7,6 +7,7 @@ Não usa sua conta. Faz pausas entre requisições e guarda as descrições em c
 from __future__ import annotations
 
 import json
+import math
 import random
 import time
 from dataclasses import asdict, dataclass
@@ -15,6 +16,8 @@ from typing import Callable, Iterator
 
 import requests
 from bs4 import BeautifulSoup
+
+from . import locations
 
 SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 POSTING_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
@@ -72,11 +75,14 @@ class LinkedInClient:
         return None
 
     def search(self, keywords: str, location: str, experience: list[str],
-               max_jobs: int, last_days: int | None = None) -> Iterator[Job]:
+               max_jobs: int, last_days: int | None = None,
+               geo_id: str | None = None) -> Iterator[Job]:
         seen: set[str] = set()
         start = 0
         while len(seen) < max_jobs:
             params = {"keywords": keywords, "location": location, "start": start}
+            if geo_id:
+                params["geoId"] = geo_id
             if experience:
                 params["f_E"] = ",".join(experience)
             if last_days:
@@ -140,14 +146,41 @@ def _parse_card(card) -> Job | None:
     )
 
 
-def collect_jobs(keywords: str, location: str, experience: list[str], max_jobs: int,
-                 last_days: int | None = None,
-                 progress: Callable[[int, int, Job], None] | None = None) -> list[Job]:
+def collect_jobs(keywords: str, places: list[str], experience: list[str], max_jobs: int,
+                 last_days: int | None = None, include_remote: bool = False,
+                 progress: Callable[[int, int, Job], None] | None = None,
+                 ) -> tuple[list[Job], list[str], list[str]]:
+    """Busca em cada localidade (cidade, estado, sigla, região...) e junta sem duplicar.
+
+    `max_jobs` é dividido entre as localidades (mínimo 10 em cada). Com `include_remote`,
+    também busca vagas remotas no Brasil todo; as que não forem remotas são descartadas.
+    Retorna (vagas, localidades buscadas, termos que o LinkedIn não reconheceu).
+    """
     client = LinkedInClient()
-    cards = list(client.search(keywords, location, experience, max_jobs, last_days))
+    geos, missing = locations.resolve(client, places)
+    if not geos and not include_remote:
+        geos = [("Brasil", locations.BRAZIL_GEO_ID)]
+    per_place = max(10, math.ceil(max_jobs / (len(geos) + include_remote)))
+
+    cards: dict[str, Job] = {}
+    for label, geo_id in geos:
+        for job in client.search(keywords, label, experience, per_place, last_days, geo_id):
+            cards.setdefault(job.job_id, job)
+    remote_only: set[str] = set()
+    if include_remote:
+        for job in client.search(f"{keywords} remoto", "Brasil", experience, per_place,
+                                 last_days, locations.BRAZIL_GEO_ID):
+            if job.job_id not in cards:
+                cards[job.job_id] = job
+                remote_only.add(job.job_id)
+
     jobs = []
-    for i, job in enumerate(cards, 1):
-        jobs.append(client.fill_description(job))
+    for i, job in enumerate(cards.values(), 1):
+        job = client.fill_description(job)
+        if job.description and (job.job_id not in remote_only
+                                or locations.work_mode(job.title, job.description) == "Remoto"):
+            jobs.append(job)
         if progress:
             progress(i, len(cards), job)
-    return [j for j in jobs if j.description]
+    labels = [label for label, _ in geos] + (["Remoto (Brasil)"] if include_remote else [])
+    return jobs, labels, missing

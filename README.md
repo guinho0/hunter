@@ -13,7 +13,10 @@ python -m venv .venv
 
 ## Fluxo
 
-1. **Mercado**: informe cargo, local (em inglês: `Brazil`, `São Paulo, Brazil`), nível e quantidade de vagas.
+1. **Mercado**: informe cargo, localidade, nível e quantidade de vagas. A localidade aceita
+   várias opções combinadas: `Brasil`, regiões (`Sudeste`), estados (`ES` ou `Espírito Santo`),
+   cidades (`Vitória, ES`) ou qualquer lugar que o LinkedIn conheça (`Lisboa`). Também dá para
+   incluir vagas remotas de todo o Brasil. Depois da busca, filtre por nível, região, estado e modalidade.
    O app lê as vagas públicas do LinkedIn e calcula **% das vagas que citam cada skill**.
    Use o filtro “nível pelo título”, porque o filtro de nível do LinkedIn deixa passar vagas de outros níveis.
 2. **Palavras-chave**: títulos de cargo mais usados (com sugestão de título para o seu perfil),
@@ -35,6 +38,7 @@ python -m venv .venv
 | `hunter/linkedin_jobs.py` | Coleta as vagas pelos endpoints públicos `jobs-guest` (sem login), com cache em `.cache/jobs`. |
 | `hunter/profile.py` | Lê o ZIP do export, o PDF e o texto livre. |
 | `hunter/keywords.py` | Palavras-chave, títulos de cargo e sugestão de título. |
+| `hunter/locations.py` | Converte cidade/estado/região em localidades do LinkedIn; detecta estado e modalidade das vagas. |
 | `hunter/analysis.py` | Ranking, aderência e match por vaga. |
 | `app.py` | Interface em Streamlit. |
 

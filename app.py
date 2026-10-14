@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from hunter import analysis, keywords as kw, profile as prof
+from hunter import analysis, keywords as kw, locations as loc, profile as prof
 from hunter.linkedin_jobs import EXPERIENCE_LEVELS, Job, collect_jobs
 from hunter.taxonomy import SKILLS, add_custom_skills
 
@@ -26,11 +26,19 @@ st.caption("Quais skills o mercado pede no LinkedIn para uma carreira e quanto o
 with st.sidebar:
     st.header("1. Carreira")
     keywords = st.text_input("Cargo", "Engenheiro de dados")
-    location = st.text_input("Local (em inglês)", "Brazil",
-                             help='Ex.: "Brazil", "São Paulo, Brazil", "Remote"')
+    places = st.multiselect(
+        "Localidade", loc.SUGGESTIONS, [loc.BRAZIL], accept_new_options=True,
+        placeholder="Cidade, estado, sigla ou região…",
+        help="Combine quantas quiser: regiões (Sudeste), estados (ES ou Espírito Santo), "
+             "cidades (Vitória, ES) ou qualquer lugar que o LinkedIn conheça. Digite e tecle Enter "
+             "para usar algo fora da lista. Regiões são buscadas estado por estado.")
+    include_remote = st.checkbox("Incluir vagas remotas de todo o Brasil",
+                                 help="Útil quando você escolhe uma cidade ou estado e também aceita "
+                                      "trabalhar remoto para empresas de outros lugares.")
     levels = st.multiselect("Nível de experiência", list(EXPERIENCE_LEVELS), ["Júnior (entry level)"])
     max_jobs = st.slider("Quantidade de vagas", 10, 200, 50, step=10,
-                         help="Cada vaga leva ~2s na primeira vez; depois fica em cache.")
+                         help="Dividida entre as localidades (mínimo 10 por localidade). Cada vaga "
+                              "leva ~2s na primeira vez; depois fica em cache.")
     last_days = st.selectbox("Publicadas nos últimos", [None, 1, 7, 30],
                              format_func=lambda d: "qualquer data" if d is None else f"{d} dia(s)", index=3)
     custom = st.text_input("Skills extras para rastrear (separadas por vírgula)",
@@ -50,12 +58,16 @@ with st.sidebar:
 
 if run:
     bar = st.progress(0.0, "Buscando vagas no LinkedIn…")
-    jobs = collect_jobs(
-        keywords, location, [EXPERIENCE_LEVELS[l] for l in levels], max_jobs, last_days,
+    jobs, searched, missing = collect_jobs(
+        keywords, places, [EXPERIENCE_LEVELS[l] for l in levels], max_jobs, last_days,
+        include_remote,
         progress=lambda i, n, j: bar.progress(i / n, f"Lendo vaga {i}/{n}: {j.title[:60]}"),
     )
     bar.empty()
-    query = f"{keywords} · {location} · {', '.join(levels) or 'todos os níveis'}"
+    if missing:
+        st.warning(f"O LinkedIn não reconheceu: {', '.join(missing)}. "
+                   "Tente outro nome ou o formato 'Cidade, UF'.")
+    query = f"{keywords} · {', '.join(searched)} · {', '.join(levels) or 'todos os níveis'}"
     st.session_state["jobs"], st.session_state["query"] = jobs, query
     if jobs:
         SEARCHES_DIR.mkdir(parents=True, exist_ok=True)
@@ -76,12 +88,25 @@ with tab_market:
         st.info("Configure a carreira na barra lateral e clique em **Buscar vagas**.")
     else:
         jobs_df = analysis.jobs_dataframe(jobs)
-        all_levels = sorted(jobs_df["Nível (título)"].unique())
-        keep = st.multiselect(
-            "Filtrar pelo nível indicado no título da vaga", all_levels, all_levels,
+
+        def options(col: str, within: pd.DataFrame) -> list[str]:
+            return within[col].value_counts().index.tolist()   # mais frequentes primeiro
+
+        f1, f2, f3, f4 = st.columns(4)
+        keep = f1.multiselect(
+            "Nível (pelo título)", options("Nível (título)", jobs_df), placeholder="Todos",
             help="O filtro de nível do LinkedIn é frouxo; aqui você refina pelo título "
                  "(ex.: manter só 'Júnior' e 'Não informado').")
-        jobs_df = jobs_df[jobs_df["Nível (título)"].isin(keep)]
+        regions = f2.multiselect("Região", options("Região", jobs_df), placeholder="Todas")
+        in_region = jobs_df[jobs_df["Região"].isin(regions)] if regions else jobs_df
+        states = f3.multiselect("Estado", options("Estado", in_region), placeholder="Todos")
+        modes = f4.multiselect("Modalidade", options("Modalidade", jobs_df), placeholder="Todas",
+                               help="Detectada pela menção a remoto/híbrido/presencial no título "
+                                    "ou na descrição.")
+        for col, chosen in [("Nível (título)", keep), ("Região", regions), ("Estado", states),
+                            ("Modalidade", modes)]:
+            if chosen:
+                jobs_df = jobs_df[jobs_df[col].isin(chosen)]
         st.session_state["jobs_df"] = jobs_df
 
         if jobs_df.empty:
@@ -118,6 +143,18 @@ with tab_market:
                 view = jobs_df.assign(skills=jobs_df["skills"].map(", ".join)).drop(columns=["job_id", "Descrição"])
                 st.dataframe(view, hide_index=True, width="stretch",
                              column_config={"Link": st.column_config.LinkColumn("Link")})
+            with st.expander("📍 Onde estão as vagas"):
+                c1, c2 = st.columns(2)
+                by_state = jobs_df["Estado"].value_counts().rename_axis("Estado").reset_index(name="Vagas")
+                fig = px.bar(by_state.head(15).iloc[::-1], x="Vagas", y="Estado", orientation="h",
+                             text="Vagas", color_discrete_sequence=[COLOR_HAVE])
+                fig.update_traces(textposition="outside", cliponaxis=False)
+                fig.update_layout(height=max(220, 26 * min(15, len(by_state))), yaxis_title=None,
+                                  bargap=0.25, margin=dict(l=0, r=30, t=10, b=0))
+                c1.plotly_chart(fig, width="stretch")
+                c2.dataframe(jobs_df["Modalidade"].value_counts().rename_axis("Modalidade")
+                             .reset_index(name="Vagas"), hide_index=True, width="stretch")
+
             st.download_button("⬇️ Baixar ranking (CSV)", ranking.to_csv(index=False).encode("utf-8"),
                                "ranking_skills.csv", "text/csv")
 

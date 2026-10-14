@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from .linkedin_jobs import Job
+from .locations import place_label, work_mode
 from .profile import Profile
 from .taxonomy import category, extract_skills
 
@@ -31,11 +32,15 @@ def level_from_title(title: str) -> str:
 def jobs_dataframe(jobs: list[Job]) -> pd.DataFrame:
     rows = []
     for job in jobs:
+        state, region = place_label(job.location)
         rows.append({
             "job_id": job.job_id,
             "Título": job.title,
             "Empresa": job.company,
             "Local": job.location,
+            "Estado": state,
+            "Região": region,
+            "Modalidade": work_mode(job.title, job.description),
             "Nível (título)": level_from_title(job.title),
             "Nível (LinkedIn)": job.seniority,
             "skills": sorted(extract_skills(f"{job.title} {job.description}")),
