@@ -11,6 +11,13 @@ python -m venv .venv
 .venv\Scripts\streamlit run app.py
 ```
 
+## Usar em outro computador (Windows)
+
+1. Instale o Python 3.12+ em https://www.python.org/downloads/ e marque **"Add python.exe to PATH"** na instalação.
+2. Baixe o projeto: no GitHub, **Code → Download ZIP**, e extraia numa pasta.
+3. Dê dois cliques em **`iniciar.bat`**. A primeira vez leva alguns minutos (instala as dependências);
+   depois o app abre sozinho no navegador. Para encerrar, feche a janela preta.
+
 ## Fluxo
 
 1. **Mercado**: informe cargo, localidade, nível e quantidade de vagas. A localidade aceita
