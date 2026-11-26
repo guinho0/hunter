@@ -10,21 +10,33 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from hunter import analysis, keywords as kw, locations as loc, profile as prof
+from hunter import analysis, keywords as kw, locations as loc, profile as prof, ui
 from hunter.linkedin_jobs import EXPERIENCE_LEVELS, Job, collect_jobs
 from hunter.taxonomy import SKILLS, add_custom_skills
+from hunter.ui import COLOR_GAP, COLOR_HAVE
 
 SEARCHES_DIR = Path(__file__).parent / ".cache" / "searches"
-COLOR_HAVE = "#2a78d6"   # azul: skill que você tem / demanda do mercado
-COLOR_GAP = "#eb6834"    # laranja: skill que falta
+PCT = st.column_config.ProgressColumn("% das vagas", format="%.0f%%", min_value=0, max_value=100)
 
-st.set_page_config(page_title="Hunter · Skills do mercado", page_icon="🎯", layout="wide")
-st.title("🎯 Hunter")
-st.caption("Quais skills o mercado pede no LinkedIn para uma carreira e quanto o seu perfil está aderente.")
+
+def saved_label(path: Path) -> str:
+    """'2026-10-13_1248_engenheiro-de-dados' → '13/10 12:48 · engenheiro de dados'."""
+    parts = path.stem.split("_", 2)
+    if len(parts) < 3:
+        return path.stem
+    date, time, slug = parts
+    return f"{date[8:10]}/{date[5:7]} {time[:2]}:{time[2:]} · {slug.replace('-', ' ')}"
+
+
+st.set_page_config(page_title="Hunter · Skills do mercado", page_icon="🎯", layout="wide",
+                   menu_items={"About": f"Hunter · {ui.REPO_URL}",
+                               "Report a bug": f"{ui.REPO_URL}/issues"})
+ui.inject_css()
+header = st.empty()   # preenchido no fim, quando já se sabe quais etapas foram concluídas
 
 # ---------------------------------------------------------------- Sidebar: busca
 with st.sidebar:
-    st.header("1. Carreira")
+    st.markdown("### 🔎 Qual carreira?")
     keywords = st.text_input("Cargo", "Engenheiro de dados")
     places = st.multiselect(
         "Localidade", loc.SUGGESTIONS, [loc.BRAZIL], accept_new_options=True,
@@ -36,21 +48,25 @@ with st.sidebar:
                                  help="Útil quando você escolhe uma cidade ou estado e também aceita "
                                       "trabalhar remoto para empresas de outros lugares.")
     levels = st.multiselect("Nível de experiência", list(EXPERIENCE_LEVELS), ["Júnior (entry level)"])
-    max_jobs = st.slider("Quantidade de vagas", 10, 200, 50, step=10,
-                         help="Dividida entre as localidades (mínimo 10 por localidade). Cada vaga "
-                              "leva ~2s na primeira vez; depois fica em cache.")
-    last_days = st.selectbox("Publicadas nos últimos", [None, 1, 7, 30],
-                             format_func=lambda d: "qualquer data" if d is None else f"{d} dia(s)", index=3)
-    custom = st.text_input("Skills extras para rastrear (separadas por vírgula)",
-                           placeholder="ex.: Kedro, Metabase")
+    with st.expander("⚙️ Opções avançadas"):
+        max_jobs = st.slider("Quantidade de vagas", 10, 200, 50, step=10,
+                             help="Dividida entre as localidades (mínimo 10 por localidade). Cada vaga "
+                                  "leva ~2s na primeira vez; depois fica em cache.")
+        last_days = st.selectbox("Publicadas nos últimos", [None, 1, 7, 30],
+                                 format_func=lambda d: "qualquer data" if d is None else f"{d} dia(s)",
+                                 index=3)
+        custom = st.text_input("Skills extras para rastrear", placeholder="ex.: Kedro, Metabase",
+                               help="Separadas por vírgula. Passam a ser contadas nas vagas e no perfil.")
     add_custom_skills(custom.split(","))
-    run = st.button("🔎 Buscar vagas", type="primary", width="stretch")
+    run = st.button("Buscar vagas", type="primary", icon="🚀", width="stretch")
 
     saved = sorted(SEARCHES_DIR.glob("*.json"), reverse=True) if SEARCHES_DIR.exists() else []
     if saved:
         st.divider()
-        pick = st.selectbox("…ou carregar busca salva", [None] + saved,
-                            format_func=lambda p: "—" if p is None else p.stem)
+        st.markdown("### 🗂️ Buscas anteriores")
+        pick = st.selectbox("Carregar busca salva", [None] + saved, label_visibility="collapsed",
+                            format_func=lambda p: "Escolha uma busca salva…" if p is None
+                            else saved_label(p))
         if pick and st.button("Carregar", width="stretch"):
             data = json.loads(pick.read_text(encoding="utf-8"))
             st.session_state["jobs"] = [Job(**j) for j in data["jobs"]]
@@ -85,7 +101,18 @@ tab_market, tab_kw, tab_profile, tab_fit = st.tabs(
 # ---------------------------------------------------------------- Mercado
 with tab_market:
     if not jobs:
-        st.info("Configure a carreira na barra lateral e clique em **Buscar vagas**.")
+        st.markdown("#### Como funciona")
+        ui.cards([
+            ("📊", "1 · Mapeie o mercado", "Escolha cargo, localidade e nível na barra lateral. "
+             "O Hunter lê as vagas públicas do LinkedIn e mede quais skills mais aparecem."),
+            ("🔑", "2 · Pegue as palavras-chave", "Veja como as vagas chamam o cargo e os termos "
+             "mais frequentes, para usar no seu título, no 'Sobre' e nas experiências."),
+            ("👤", "3 · Envie o seu perfil", "ZIP de dados do LinkedIn, PDF do perfil ou texto livre. "
+             "Tudo é processado localmente, no seu computador."),
+            ("✅", "4 · Veja a sua aderência", "Quanto você cobre do que o mercado pede, o que estudar "
+             "primeiro e quais vagas têm mais a ver com você."),
+        ])
+        st.info("👈 Configure a carreira na barra lateral e clique em **Buscar vagas** para começar.")
     else:
         jobs_df = analysis.jobs_dataframe(jobs)
 
@@ -115,29 +142,33 @@ with tab_market:
             ranking = analysis.skill_ranking(jobs_df)
             st.session_state["ranking"] = ranking
 
-            st.subheader(st.session_state.get("query", ""))
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Vagas analisadas", len(jobs_df))
-            c2.metric("Skills distintas encontradas", len(ranking))
-            c3.metric("Skills por vaga (mediana)", int(jobs_df["skills"].map(len).median()))
+            st.caption("🔎 " + st.session_state.get("query", ""))
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Vagas analisadas", len(jobs_df), border=True)
+            c2.metric("Empresas", jobs_df["Empresa"].nunique(), border=True)
+            c3.metric("Skills distintas", len(ranking), border=True)
+            c4.metric("Skills por vaga (mediana)", int(jobs_df["skills"].map(len).median()), border=True)
 
-            top_n = st.slider("Mostrar top", 5, 50, 25)
-            top = ranking.head(top_n)
-            fig = px.bar(top.iloc[::-1], x="% das vagas", y="Skill", orientation="h",
-                         text="% das vagas", hover_data={"Vagas": True, "Categoria": True},
-                         color_discrete_sequence=[COLOR_HAVE])
-            fig.update_traces(texttemplate="%{text:.0f}%", textposition="outside", cliponaxis=False)
-            fig.update_layout(height=max(320, 24 * len(top)), yaxis_title=None,
-                              xaxis_title="% das vagas que citam a skill", bargap=0.25,
-                              margin=dict(l=0, r=40, t=10, b=0))
-            st.plotly_chart(fig, width="stretch")
+            with st.container(border=True):
+                head, ctrl = st.columns([3, 1], vertical_alignment="bottom")
+                head.markdown("#### 🏆 Skills mais pedidas")
+                top_n = ctrl.slider("Mostrar top", 5, 50, 25)
+                top = ranking.head(top_n)
+                fig = px.bar(top.iloc[::-1], x="% das vagas", y="Skill", orientation="h",
+                             text="% das vagas", hover_data={"Vagas": True, "Categoria": True},
+                             color="% das vagas", color_continuous_scale=["#b9d3f3", COLOR_HAVE])
+                fig.update_traces(texttemplate="%{text:.0f}%", textposition="outside", cliponaxis=False)
+                fig.update_layout(xaxis_title="% das vagas que citam a skill", coloraxis_showscale=False,
+                                  margin=dict(l=0, r=40, t=10, b=0))
+                st.plotly_chart(ui.style_fig(fig, max(320, 26 * len(top))), width="stretch")
 
-            st.markdown("**Por categoria**")
+            st.markdown("#### 🧩 Por categoria")
             by_cat = ranking.groupby("Categoria")["Skill"].apply(
                 lambda s: ", ".join(s.head(6))).reset_index(name="Mais pedidas")
-            by_cat["Maior %"] = ranking.groupby("Categoria")["% das vagas"].max().values
-            st.dataframe(by_cat.sort_values("Maior %", ascending=False), hide_index=True,
-                         width="stretch")
+            by_cat["% das vagas"] = ranking.groupby("Categoria")["% das vagas"].max().values
+            st.dataframe(by_cat.sort_values("% das vagas", ascending=False), hide_index=True,
+                         width="stretch", column_config={"% das vagas": st.column_config.ProgressColumn(
+                             "Skill mais citada", format="%.0f%%", min_value=0, max_value=100)})
 
             with st.expander(f"Ver as {len(jobs_df)} vagas"):
                 view = jobs_df.assign(skills=jobs_df["skills"].map(", ".join)).drop(columns=["job_id", "Descrição"])
@@ -149,29 +180,39 @@ with tab_market:
                 fig = px.bar(by_state.head(15).iloc[::-1], x="Vagas", y="Estado", orientation="h",
                              text="Vagas", color_discrete_sequence=[COLOR_HAVE])
                 fig.update_traces(textposition="outside", cliponaxis=False)
-                fig.update_layout(height=max(220, 26 * min(15, len(by_state))), yaxis_title=None,
-                                  bargap=0.25, margin=dict(l=0, r=30, t=10, b=0))
-                c1.plotly_chart(fig, width="stretch")
-                c2.dataframe(jobs_df["Modalidade"].value_counts().rename_axis("Modalidade")
-                             .reset_index(name="Vagas"), hide_index=True, width="stretch")
+                fig.update_layout(margin=dict(l=0, r=30, t=10, b=0))
+                c1.plotly_chart(ui.style_fig(fig, max(220, 28 * min(15, len(by_state)))), width="stretch")
+                modes_df = jobs_df["Modalidade"].value_counts().rename_axis("Modalidade").reset_index(name="Vagas")
+                fig = px.pie(modes_df, names="Modalidade", values="Vagas", hole=0.6,
+                             color_discrete_sequence=[COLOR_HAVE, COLOR_GAP, "#7fb0ea", "#f4a582", "#9aa4b2"])
+                fig.update_traces(textinfo="percent+label", textposition="outside")
+                fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+                c2.plotly_chart(ui.style_fig(fig, 300), width="stretch")
 
-            st.download_button("⬇️ Baixar ranking (CSV)", ranking.to_csv(index=False).encode("utf-8"),
-                               "ranking_skills.csv", "text/csv")
+            st.download_button("Baixar ranking (CSV)", ranking.to_csv(index=False).encode("utf-8"),
+                               "ranking_skills.csv", "text/csv", icon="⬇️")
 
 # ---------------------------------------------------------------- Perfil
 with tab_profile:
-    st.markdown(
-        "Envie seus dados do LinkedIn por **uma ou mais** fontes abaixo:\n"
-        "- **ZIP de dados** (mais completo): LinkedIn → *Configurações e Privacidade* → "
-        "*Privacidade de dados* → *Baixe seus dados* → selecione Perfil, Competências, Cargos, "
-        "Certificações, Cursos, Projetos, Formação e Idiomas.\n"
-        "- **PDF do perfil**: no seu perfil → *Mais* → *Salvar como PDF*.\n"
-        "- **Texto livre**: cole experiências, cursos ou certificações que não estão no LinkedIn.")
+    st.markdown("#### 👤 Envie o seu perfil")
+    st.caption("Use **uma ou mais** fontes. Os arquivos são lidos só no seu computador; nada é enviado "
+               "para fora.")
 
-    c1, c2 = st.columns(2)
-    zip_file = c1.file_uploader("ZIP de dados do LinkedIn", type="zip")
-    pdf_file = c2.file_uploader("PDF do perfil", type="pdf")
-    free_text = st.text_area("Texto livre", height=120)
+    c1, c2, c3 = st.columns(3)
+    with c1.container(border=True):
+        st.markdown("**📦 ZIP de dados** · mais completo")
+        st.caption("LinkedIn → Configurações e Privacidade → Privacidade de dados → Baixe seus dados. "
+                   "Selecione Perfil, Competências, Cargos, Certificações, Cursos, Projetos, Formação "
+                   "e Idiomas.")
+        zip_file = st.file_uploader("ZIP de dados do LinkedIn", type="zip", label_visibility="collapsed")
+    with c2.container(border=True):
+        st.markdown("**📄 PDF do perfil** · mais rápido")
+        st.caption("No seu perfil → Mais → Salvar como PDF.")
+        pdf_file = st.file_uploader("PDF do perfil", type="pdf", label_visibility="collapsed")
+    with c3.container(border=True):
+        st.markdown("**✍️ Texto livre**")
+        st.caption("Experiências, cursos ou certificações que não estão no LinkedIn.")
+        free_text = st.text_area("Texto livre", height=110, label_visibility="collapsed")
 
     p = prof.Profile()
     if zip_file:
@@ -213,38 +254,45 @@ with tab_fit:
         min_pct = c2.slider("Ignorar skills citadas em menos de (% das vagas)", 0, 30, 5)
         res = analysis.fit(ranking, profile, top_n, min_pct)
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Aderência ao mercado", f"{res.score:.0f}%",
-                  help="Soma da demanda (% das vagas) das skills que você tem ÷ demanda total das top N. "
-                       "Skills mais pedidas pesam mais.")
-        m2.metric("Cobertura das top skills", f"{res.coverage:.0f}%",
-                  help="Quantas das top N skills você tem, sem ponderar.")
-        m3.metric("Skills que faltam", len(res.gaps))
+        g, m = st.columns([1.3, 1], vertical_alignment="center")
+        with g.container(border=True):
+            st.plotly_chart(ui.gauge(res.score, "Aderência ao mercado"), width="stretch",
+                            config={"displayModeBar": False})
+            st.caption("Soma da demanda (% das vagas) das skills que você tem ÷ demanda total das "
+                       "top N. Skills mais pedidas pesam mais.")
+        with m:
+            st.metric("Cobertura das top skills", f"{res.coverage:.0f}%", border=True,
+                      help="Quantas das top N skills você tem, sem ponderar.")
+            st.metric("Skills do top que você tem", int(res.table["Você tem?"].sum()), border=True)
+            st.metric("Skills que faltam", len(res.gaps), border=True)
 
         chart = res.table.assign(Status=res.table["Você tem?"].map({True: "Você tem", False: "Falta"}))
         fig = px.bar(chart.iloc[::-1], x="% das vagas", y="Skill", color="Status", orientation="h",
                      color_discrete_map={"Você tem": COLOR_HAVE, "Falta": COLOR_GAP},
                      category_orders={"Status": ["Você tem", "Falta"]},
                      hover_data={"Categoria": True, "Onde aparece no seu perfil": True})
-        fig.update_layout(height=max(320, 24 * len(chart)), yaxis_title=None, bargap=0.25,
-                          xaxis_title="% das vagas que citam a skill", legend_title=None,
+        fig.update_yaxes(categoryorder="total ascending")   # ordem de demanda, sem agrupar por cor
+        fig.update_layout(xaxis_title="% das vagas que citam a skill", legend_title=None,
                           legend=dict(orientation="h", y=1.05), margin=dict(l=0, r=10, t=30, b=0))
-        st.plotly_chart(fig, width="stretch")
+        with st.container(border=True):
+            st.markdown("#### 📈 Você × mercado")
+            st.plotly_chart(ui.style_fig(fig, max(320, 26 * len(chart))), width="stretch")
 
         left, right = st.columns(2)
-        with left:
-            st.markdown("**📚 O que estudar primeiro** (ordenado pela demanda)")
+        with left.container(border=True):
+            st.markdown("#### 📚 O que estudar primeiro")
+            st.caption("Skills do top que faltam no seu perfil, ordenadas pela demanda.")
             if res.gaps.empty:
-                st.success("Você cobre todas as top skills deste recorte!")
+                st.success("Você cobre todas as top skills deste recorte! 🎉")
             else:
-                st.dataframe(res.gaps, hide_index=True, width="stretch",
-                             column_config={"% das vagas": st.column_config.ProgressColumn(
-                                 "% das vagas", format="%.0f%%", min_value=0, max_value=100)})
-        with right:
-            st.markdown("**💪 Seus diferenciais** (você tem, mas não estão no top)")
-            st.write(", ".join(res.extras) or "—")
+                ui.chips(res.gaps["Skill"].head(8).tolist(), gap=True)
+                st.dataframe(res.gaps, hide_index=True, width="stretch", column_config={"% das vagas": PCT})
+        with right.container(border=True):
+            st.markdown("#### 💪 Seus diferenciais")
+            st.caption("Skills que você tem e que não estão no top deste recorte.")
+            ui.chips(res.extras)
 
-        st.markdown("**🎯 Vagas com maior match com o seu perfil**")
+        st.markdown("#### 🎯 Vagas com maior match com o seu perfil")
         matches = analysis.job_matches(st.session_state["jobs_df"], profile)
         st.dataframe(matches[["Título", "Empresa", "Local", "Match %", "Faltam", "Link"]].head(30),
                      hide_index=True, width="stretch",
@@ -268,15 +316,14 @@ with tab_kw:
                    "é por eles que recrutadores pesquisam.")
         titles = kw.title_frequency(jobs_df["Título"].tolist())
         c1, c2 = st.columns([3, 2])
-        c1.dataframe(titles.head(15), hide_index=True, width="stretch",
-                     column_config={"% das vagas": st.column_config.ProgressColumn(
-                         "% das vagas", format="%.0f%%", min_value=0, max_value=100)})
-        with c2:
+        c1.dataframe(titles.head(15), hide_index=True, width="stretch", column_config={"% das vagas": PCT})
+        with c2.container(border=True):
             ranking = st.session_state["ranking"]
             st.markdown("**✍️ Sugestão de título para o seu perfil**")
             target = st.selectbox("Cargo-alvo", titles["Título"].head(10))
             skills_for_headline = set(profile.skills) if profile and profile.skills else set(ranking["Skill"])
-            st.code(kw.suggest_headline(target, ranking, skills_for_headline), language=None)
+            st.code(kw.suggest_headline(target, ranking, skills_for_headline), language=None,
+                    wrap_lines=True)
             st.caption("Cargo-alvo + as suas skills mais pedidas, em ordem de demanda."
                        if profile and profile.skills else
                        "Sem perfil carregado: usando as skills mais pedidas. Envie seu perfil "
@@ -305,8 +352,7 @@ with tab_kw:
             elif kind == "Só skills do catálogo":
                 view = view[view["Categoria"] != "Termo livre"]
 
-            config = {"% das vagas": st.column_config.ProgressColumn(
-                "% das vagas", format="%.0f%%", min_value=0, max_value=100)}
+            config = {"% das vagas": PCT}
             left, right = st.columns(2) if has_profile else (st.container(), None)
             with left:
                 st.markdown(f"**Ranking ({len(view)} termos)**")
@@ -324,8 +370,8 @@ with tab_kw:
             else:
                 st.caption("Envie seu perfil na aba **Meu perfil** para ver quais termos faltam nele.")
 
-            st.download_button("⬇️ Baixar palavras-chave (CSV)", terms.to_csv(index=False).encode("utf-8"),
-                               "palavras_chave.csv", "text/csv")
+            st.download_button("Baixar palavras-chave (CSV)", terms.to_csv(index=False).encode("utf-8"),
+                               "palavras_chave.csv", "text/csv", icon="⬇️")
 
             # --- Contexto
             st.divider()
@@ -333,3 +379,11 @@ with tab_kw:
             term = st.selectbox("Escolha um termo", view["Termo"].tolist() or terms["Termo"].tolist())
             for snip in kw.snippets(descriptions, term):
                 st.markdown("> " + snip.replace("$", r"\$"))
+
+# ---------------------------------------------------------------- Cabeçalho e rodapé
+profile = st.session_state.get("profile")
+has_jobs, has_profile = bool(jobs), bool(profile and profile.skills)
+with header.container():
+    ui.hero([("Buscar vagas", has_jobs), ("Palavras-chave", has_jobs),
+             ("Enviar perfil", has_profile), ("Ver aderência", has_jobs and has_profile)])
+ui.footer()
