@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎯 Hunter
+# Hunter
 
 **Descubra quais skills o mercado pede no LinkedIn para a sua carreira e quanto o seu perfil está aderente a ele.**
 
@@ -24,10 +24,10 @@ cada skill aparece** e compara com o seu perfil.
 
 | | |
 |---|---|
-| 📊 **Mercado** | Ranking das skills mais pedidas, por categoria, estado e modalidade (remoto, híbrido, presencial). |
-| 🔑 **Palavras-chave** | Como as vagas chamam o cargo, termos mais frequentes nas descrições e sugestão de título para o seu perfil. |
-| 👤 **Meu perfil** | Lê o ZIP de dados do LinkedIn, o PDF do perfil ou texto livre e detecta as suas skills. |
-| ✅ **Aderência** | Nota de aderência ao mercado, o que estudar primeiro, seus diferenciais e as vagas com maior match. |
+| **Mercado** | Ranking das skills mais pedidas, por categoria, estado e modalidade (remoto, híbrido, presencial). |
+| **Palavras-chave** | Como as vagas chamam o cargo, termos mais frequentes nas descrições e sugestão de título para o seu perfil. |
+| **Meu perfil** | Lê o ZIP de dados do LinkedIn, o PDF do perfil ou texto livre e detecta as suas skills. |
+| **Aderência** | Nota de aderência ao mercado, o que estudar primeiro, seus diferenciais e as vagas com maior match. |
 
 <table>
   <tr>
@@ -62,7 +62,8 @@ streamlit run app.py
 
 ## Como usar
 
-1. **Mercado**: informe cargo, localidade, nível e clique em **Buscar vagas**. A localidade aceita
+1. **Mercado**: informe cargo, localidade, nível e data de publicação (últimas 24 horas,
+   última semana, último mês, últimos 3 meses ou qualquer data) e clique em **Buscar vagas**. A localidade aceita
    várias opções combinadas: `Brasil`, regiões (`Sudeste`), estados (`ES` ou `Espírito Santo`),
    cidades (`Vitória, ES`) ou qualquer lugar que o LinkedIn conheça (`Lisboa`). Depois, refine por
    nível, região, estado e modalidade. Use o filtro "nível pelo título": o filtro de nível do

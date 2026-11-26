@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import html
 
 import plotly.graph_objects as go
@@ -11,86 +12,140 @@ COLOR_HAVE = "#2a78d6"   # azul: skill que você tem / demanda do mercado
 COLOR_GAP = "#eb6834"    # laranja: skill que falta
 REPO_URL = "https://github.com/guinho0/hunter"
 
+# Marca: alvo minimalista em SVG. O st.html remove <svg> embutido, então vira <img> em data URI.
+_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"
+  fill="none" stroke="#2a78d6"
+  stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>
+  <circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="#2a78d6" stroke="none"/>
+  <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg>"""
+
+_GITHUB_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"
+  fill="#8b8f98">
+  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+  0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
+  1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+  0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09
+  2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65
+  3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>"""
+
+
+def _img(svg: str, size: int) -> str:
+    data = base64.b64encode(svg.encode()).decode()
+    return f'<img src="data:image/svg+xml;base64,{data}" width="{size}" height="{size}" alt="">'
+
+
+LOGO, GITHUB = _img(_LOGO_SVG, 26), _img(_GITHUB_SVG, 16)
+
 _CSS = """
 <style>
-/* Mais respiro no topo e largura confortável */
-.block-container { padding-top: 4.2rem; padding-bottom: 3rem; max-width: 1280px; }
+.block-container { padding-top: 3.4rem; padding-bottom: 3rem; max-width: 1240px; }
 
-/* ---------- Cabeçalho */
-.hx-hero { padding: 1.6rem 1.8rem; border-radius: 1rem; margin-bottom: 1.2rem;
-  background: linear-gradient(135deg, rgba(42,120,214,.14) 0%, rgba(235,104,52,.10) 100%);
-  border: 1px solid rgba(128,128,128,.18); }
-.hx-hero h1 { margin: 0; padding: 0; font-size: 2.3rem; font-weight: 800; letter-spacing: -.02em; }
-.hx-hero h1 span { background: linear-gradient(90deg, #2a78d6, #eb6834);
-  -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hx-hero p { margin: .35rem 0 1rem; opacity: .8; font-size: 1.02rem; }
-.hx-steps { display: flex; flex-wrap: wrap; gap: .5rem; }
-.hx-step { display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem;
-  border-radius: 999px; font-size: .85rem; font-weight: 500;
-  border: 1px solid rgba(128,128,128,.25); background: rgba(128,128,128,.06); }
-.hx-step b { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem;
-  border-radius: 50%; font-size: .72rem; background: rgba(128,128,128,.22); }
-.hx-step.done { border-color: rgba(42,120,214,.55); background: rgba(42,120,214,.12); }
-.hx-step.done b { background: #2a78d6; color: #fff; }
+/* Aviso do Streamlit para desenvolvedores, sem sentido para quem usa o app */
+.stSkillsNudge { display: none !important; }
+
+/* Sem o ícone de link que o Streamlit põe ao lado dos títulos */
+[data-testid="stHeaderActionElements"] { display: none; }
+h1, h2, h3, h4 { letter-spacing: -.01em; }
+
+/* ---------- Barra de topo */
+.hx-top { display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: .9rem; border-bottom: 1px solid rgba(128,128,128,.2); }
+.hx-brand { display: flex; align-items: center; gap: .55rem; font-weight: 700; font-size: 1.15rem;
+  letter-spacing: -.01em; }
+.hx-top a { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 500;
+  color: inherit; text-decoration: none; padding: .35rem .75rem; border-radius: .5rem;
+  border: 1px solid rgba(128,128,128,.25); }
+.hx-top a:hover { border-color: rgba(128,128,128,.5); }
+
+/* ---------- Título da página */
+.hx-intro { padding: 1.8rem 0 1.4rem; }
+.hx-intro h1 { margin: 0; padding: 0; font-size: 2rem; font-weight: 700; line-height: 1.2; }
+.hx-intro p { margin: .5rem 0 0; max-width: 46rem; opacity: .7; font-size: 1rem; line-height: 1.5; }
+
+/* ---------- Etapas */
+.hx-steps { display: flex; gap: 0; margin: 0 0 .6rem !important; padding: 0 !important;
+  list-style: none; flex-wrap: wrap; }
+.hx-steps li { margin-left: 0 !important; display: flex; align-items: center; gap: .5rem; font-size: .85rem; opacity: .55;
+  padding-right: 1.1rem; margin-right: 1.1rem; border-right: 1px solid rgba(128,128,128,.25); }
+.hx-steps li:last-child { border-right: 0; }
+.hx-steps li span { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem;
+  border-radius: 50%; font-size: .72rem; font-weight: 600; border: 1px solid currentColor; }
+.hx-steps li.done { opacity: 1; }
+.hx-steps li.done span { background: #2a78d6; border-color: #2a78d6; color: #fff; }
+
+/* ---------- Rótulo de seção (sidebar) */
+.hx-label { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  opacity: .55; margin: .2rem 0 -.2rem; }
 
 /* ---------- Cards de "como funciona" */
 .hx-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: .9rem; margin: .4rem 0 1rem; }
-.hx-card { padding: 1.1rem 1.2rem; border-radius: .9rem;
-  border: 1px solid rgba(128,128,128,.2); background: rgba(128,128,128,.04); }
-.hx-card .ic { font-size: 1.6rem; }
-.hx-card h4 { margin: .4rem 0 .3rem; padding: 0; font-size: 1rem; font-weight: 700; }
-.hx-card p { margin: 0; font-size: .88rem; opacity: .78; line-height: 1.45; }
+  gap: 1px; margin: .6rem 0 1.4rem; border: 1px solid rgba(128,128,128,.2); border-radius: .75rem;
+  overflow: hidden; background: rgba(128,128,128,.2); }
+.hx-card { padding: 1.3rem 1.3rem 1.4rem; background: var(--hx-bg, #fff); }
+.hx-card .n { font-size: .8rem; font-weight: 600; color: #2a78d6; font-variant-numeric: tabular-nums; }
+.hx-card h4 { margin: .5rem 0 .35rem; padding: 0; font-size: 1rem; font-weight: 600; }
+.hx-card p { margin: 0; font-size: .88rem; opacity: .7; line-height: 1.5; }
 
 /* ---------- Chips de skills */
 .hx-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .3rem 0 .8rem; }
-.hx-chip { padding: .22rem .65rem; border-radius: 999px; font-size: .82rem; font-weight: 500;
-  border: 1px solid rgba(42,120,214,.4); background: rgba(42,120,214,.1); }
-.hx-chip.gap { border-color: rgba(235,104,52,.45); background: rgba(235,104,52,.1); }
+.hx-chip { padding: .2rem .6rem; border-radius: .4rem; font-size: .82rem; font-weight: 500;
+  border: 1px solid rgba(42,120,214,.35); background: rgba(42,120,214,.08); }
+.hx-chip.gap { border-color: rgba(235,104,52,.4); background: rgba(235,104,52,.08); }
 
 /* ---------- Métricas e abas */
-[data-testid="stMetricValue"] { font-weight: 700; }
-.stTabs [data-baseweb="tab-list"] { gap: .3rem; }
-.stTabs [data-baseweb="tab"] { padding: .55rem 1rem; font-weight: 600; }
+[data-testid="stMetricValue"] { font-weight: 600; }
+[data-testid="stMetricLabel"] { opacity: .75; }
+.stTabs [data-baseweb="tab-list"] { gap: 1.4rem; }
+.stTabs [data-baseweb="tab"] { padding: .6rem 0; font-weight: 500; }
 
 /* ---------- Rodapé */
-.hx-footer { margin-top: 2.5rem; padding-top: 1rem; text-align: center; font-size: .85rem;
-  opacity: .65; border-top: 1px solid rgba(128,128,128,.2); }
-.hx-footer a { color: inherit; font-weight: 600; }
+.hx-footer { margin-top: 3rem; padding-top: 1.1rem; display: flex; justify-content: space-between;
+  flex-wrap: wrap; gap: .5rem; font-size: .82rem; opacity: .6; border-top: 1px solid rgba(128,128,128,.2); }
+.hx-footer a { color: inherit; }
 </style>
 """
 
 
 def inject_css() -> None:
-    st.html(_CSS)
+    # Fundo dos cards acompanha o tema (claro/escuro) do Streamlit.
+    bg = st.context.theme.type == "dark" and "#0e1117" or "#ffffff"
+    st.html(_CSS.replace("var(--hx-bg, #fff)", bg))
 
 
 def hero(steps: list[tuple[str, bool]]) -> None:
-    """Cabeçalho com título e as etapas do fluxo (marcadas quando concluídas)."""
-    chips = "".join(
-        f'<span class="hx-step{" done" if done else ""}"><b>{"✓" if done else i}</b>'
-        f"{html.escape(label)}</span>"
+    """Barra de topo, título da página e etapas do fluxo (marcadas quando concluídas)."""
+    items = "".join(
+        f'<li class="{"done" if done else ""}"><span>{"&#10003;" if done else i}</span>'
+        f"{html.escape(label)}</li>"
         for i, (label, done) in enumerate(steps, 1))
     st.html(f"""
-    <div class="hx-hero">
-      <h1>🎯 <span>Hunter</span></h1>
-      <p>Descubra quais skills o mercado pede no LinkedIn para a sua carreira
-         e quanto o seu perfil está aderente a ele.</p>
-      <div class="hx-steps">{chips}</div>
-    </div>""")
+    <div class="hx-top">
+      <div class="hx-brand">{LOGO}Hunter</div>
+      <a href="{REPO_URL}" target="_blank" rel="noopener">{GITHUB}GitHub</a>
+    </div>
+    <div class="hx-intro">
+      <h1>O que o mercado pede para a sua carreira</h1>
+      <p>Lê as vagas públicas do LinkedIn, mede quais skills aparecem com mais frequência
+         e compara com o seu perfil.</p>
+    </div>
+    <ol class="hx-steps">{items}</ol>""")
 
 
-def cards(items: list[tuple[str, str, str]]) -> None:
-    """Grade de cards (ícone, título, texto)."""
+def label(text: str) -> None:
+    st.html(f'<div class="hx-label">{html.escape(text)}</div>')
+
+
+def cards(items: list[tuple[str, str]]) -> None:
+    """Grade de cards numerados (título, texto)."""
     body = "".join(
-        f'<div class="hx-card"><div class="ic">{icon}</div><h4>{html.escape(title)}</h4>'
-        f"<p>{html.escape(text)}</p></div>" for icon, title, text in items)
+        f'<div class="hx-card"><div class="n">{i:02d}</div><h4>{html.escape(title)}</h4>'
+        f"<p>{html.escape(text)}</p></div>" for i, (title, text) in enumerate(items, 1))
     st.html(f'<div class="hx-cards">{body}</div>')
 
 
 def chips(values: list[str], gap: bool = False) -> None:
     if not values:
-        st.caption("—")
+        st.caption("Nenhuma.")
         return
     cls = "hx-chip gap" if gap else "hx-chip"
     st.html('<div class="hx-chips">' + "".join(
@@ -100,8 +155,8 @@ def chips(values: list[str], gap: bool = False) -> None:
 def footer() -> None:
     st.html(f"""
     <div class="hx-footer">
-      Hunter é open source · <a href="{REPO_URL}" target="_blank">código no GitHub</a>
-      · dados de vagas públicas do LinkedIn, coletadas localmente no seu computador
+      <span>Hunter · código aberto sob licença MIT</span>
+      <span>Os dados ficam no seu computador · <a href="{REPO_URL}" target="_blank">GitHub</a></span>
     </div>""")
 
 
